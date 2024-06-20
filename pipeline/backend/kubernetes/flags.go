@@ -67,6 +67,12 @@ var Flags = []cli.Flag{
 		Usage:   "backend k8s Agent-wide worker pod node selector",
 		Value:   "",
 	},
+	&cli.StringFlag{
+		EnvVars: []string{"WOODPECKER_BACKEND_K8S_POD_TOLERATIONS"},
+		Name:    "backend-k8s-pod-tolerations",
+		Usage:   "backend k8s Agent-wide worker pod tolerations",
+		Value:   "",
+	},
 	&cli.BoolFlag{
 		EnvVars: []string{"WOODPECKER_BACKEND_K8S_POD_ANNOTATIONS_ALLOW_FROM_STEP"},
 		Name:    "backend-k8s-pod-annotations-allow-from-step",

@@ -15,6 +15,8 @@
 package kubernetes
 
 import (
+	"encoding/json"
+	"github.com/rs/zerolog/log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -50,4 +52,15 @@ func TestGettingConfig(t *testing.T) {
 	assert.Equal(t, 1, len(engine.config.PodAnnotations))
 	assert.Equal(t, 1, len(engine.config.ImagePullSecretNames))
 	assert.Equal(t, false, engine.config.SecurityContext.RunAsNonRoot)
+}
+
+func TestTolerations(t *testing.T) {
+	//ci-runner=true:NoExecute
+	tolerations := `[{"key":"ci-runner","operator":"Equal","value":"true","effect":"NoExecute","tolerationSeconds":3600}]`
+	podTolerations := make([]Toleration, 0)
+	if err := json.Unmarshal([]byte(tolerations), &podTolerations); err != nil {
+		log.Error().Err(err).Msgf("could not unmarshal pod tolerations '%s'", tolerations)
+		return
+	}
+	assert.Equal(t, 1, len(podTolerations))
 }

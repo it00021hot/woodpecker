@@ -16,6 +16,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -63,6 +64,7 @@ type config struct {
 	PodAnnotations              map[string]string
 	PodAnnotationsAllowFromStep bool
 	PodNodeSelector             map[string]string
+	PodTolerations              []Toleration
 	ImagePullSecretNames        []string
 	SecurityContext             SecurityContextConfig
 }
@@ -93,6 +95,7 @@ func configFromCliContext(ctx context.Context) (*config, error) {
 				PodAnnotations:              make(map[string]string), // just init empty map to prevent nil panic
 				PodAnnotationsAllowFromStep: c.Bool("backend-k8s-pod-annotations-allow-from-step"),
 				PodNodeSelector:             make(map[string]string), // just init empty map to prevent nil panic
+				PodTolerations:              make([]Toleration, 0),
 				ImagePullSecretNames:        c.StringSlice("backend-k8s-pod-image-pull-secret-names"),
 				SecurityContext: SecurityContextConfig{
 					RunAsNonRoot: c.Bool("backend-k8s-secctx-nonroot"), // cspell:words secctx nonroot
@@ -118,6 +121,12 @@ func configFromCliContext(ctx context.Context) (*config, error) {
 			if nodeSelector := c.String("backend-k8s-pod-node-selector"); nodeSelector != "" {
 				if err := yaml.Unmarshal([]byte(nodeSelector), &config.PodNodeSelector); err != nil {
 					log.Error().Err(err).Msgf("could not unmarshal pod node selector '%s'", nodeSelector)
+					return nil, err
+				}
+			}
+			if tolerations := c.String("backend-k8s-pod-tolerations"); tolerations != "" {
+				if err := json.Unmarshal([]byte(tolerations), &config.PodTolerations); err != nil {
+					log.Error().Err(err).Msgf("could not unmarshal pod tolerations '%s'", tolerations)
 					return nil, err
 				}
 			}
@@ -182,6 +191,7 @@ func (e *kube) getConfig() *config {
 	c.PodLabels = maps.Clone(e.config.PodLabels)
 	c.PodAnnotations = maps.Clone(e.config.PodAnnotations)
 	c.PodNodeSelector = maps.Clone(e.config.PodNodeSelector)
+	c.PodTolerations = slices.Clone(e.config.PodTolerations)
 	c.ImagePullSecretNames = slices.Clone(e.config.ImagePullSecretNames)
 	return &c
 }

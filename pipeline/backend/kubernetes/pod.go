@@ -155,7 +155,7 @@ func podSpec(step *types.Step, config *config, options BackendOptions) (v1.PodSp
 		ImagePullSecrets:   imagePullSecretsReferences(config.ImagePullSecretNames),
 		HostAliases:        hostAliases(step.ExtraHosts),
 		NodeSelector:       nodeSelector(options.NodeSelector, config.PodNodeSelector, step.Environment["CI_SYSTEM_PLATFORM"]),
-		Tolerations:        tolerations(options.Tolerations),
+		Tolerations:        tolerations(options.Tolerations, config.PodTolerations),
 		SecurityContext:    podSecurityContext(options.SecurityContext, config.SecurityContext, step.Privileged),
 	}
 	spec.Volumes, err = volumes(step.Volumes)
@@ -353,8 +353,16 @@ func nodeSelector(backendNodeSelector, configNodeSelector map[string]string, pla
 	return nodeSelector
 }
 
-func tolerations(backendTolerations []Toleration) []v1.Toleration {
+func tolerations(backendTolerations []Toleration, configTolerations []Toleration) []v1.Toleration {
 	var tolerations []v1.Toleration
+
+	if len(configTolerations) > 0 {
+		log.Trace().Msgf("tolerations that will be used in the configuration: %v", configTolerations)
+		for _, configToleration := range configTolerations {
+			toleration := toleration(configToleration)
+			tolerations = append(tolerations, toleration)
+		}
+	}
 
 	if len(backendTolerations) > 0 {
 		log.Trace().Msgf("tolerations that will be used in the backend options: %v", backendTolerations)
