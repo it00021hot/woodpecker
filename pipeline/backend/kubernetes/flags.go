@@ -68,7 +68,7 @@ var Flags = []cli.Flag{
 		Value:   "",
 	},
 	&cli.StringFlag{
-		EnvVars: []string{"WOODPECKER_BACKEND_K8S_POD_TOLERATIONS"},
+		Sources: cli.EnvVars("WOODPECKER_BACKEND_K8S_POD_TOLERATIONS"),
 		Name:    "backend-k8s-pod-tolerations",
 		Usage:   "backend k8s Agent-wide worker pod tolerations",
 		Value:   "",
