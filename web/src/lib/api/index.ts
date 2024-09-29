@@ -119,6 +119,10 @@ export default class WoodpeckerClient extends ApiClient {
     return this._get(`/api/repos/${repoId}/pipelines/${pipelineNumber}/config`) as Promise<PipelineConfig[]>;
   }
 
+  async getPipelineMetadata(repoId: number, pipelineNumber: number): Promise<any> {
+    return this._get(`/api/repos/${repoId}/pipelines/${pipelineNumber}/metadata`) as Promise<any>;
+  }
+
   async getPipelineFeed(): Promise<PipelineFeed[]> {
     return this._get(`/api/user/feed`) as Promise<PipelineFeed[]>;
   }
@@ -398,7 +402,7 @@ export default class WoodpeckerClient extends ApiClient {
     return this._post(`/api/repos/repair`);
   }
 
-  // TODO enable again with eslint-plugin-promise eslint-disable-next-line promise/prefer-await-to-callbacks
+  // eslint-disable-next-line promise/prefer-await-to-callbacks
   on(callback: (data: { pipeline?: Pipeline; repo?: Repo }) => void): EventSource {
     return this._subscribe('/api/stream/events', callback, {
       reconnect: true,
@@ -409,7 +413,7 @@ export default class WoodpeckerClient extends ApiClient {
     repoId: number,
     pipeline: number,
     step: number,
-    // TODO enable again with eslint-plugin-promise eslint-disable-next-line promise/prefer-await-to-callbacks
+    // eslint-disable-next-line promise/prefer-await-to-callbacks
     callback: (data: PipelineLog) => void,
   ): EventSource {
     return this._subscribe(`/api/stream/logs/${repoId}/${pipeline}/${step}`, callback, {

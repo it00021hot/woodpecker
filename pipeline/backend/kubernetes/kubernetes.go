@@ -16,6 +16,7 @@ package kubernetes
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
@@ -63,6 +64,7 @@ type config struct {
 	PodAnnotations              map[string]string
 	PodAnnotationsAllowFromStep bool
 	PodNodeSelector             map[string]string
+	PodTolerations              []Toleration
 	ImagePullSecretNames        []string
 	SecurityContext             SecurityContextConfig
 	NativeSecretsAllowFromStep  bool
@@ -94,15 +96,12 @@ func configFromCliContext(ctx context.Context) (*config, error) {
 				PodAnnotations:              make(map[string]string), // just init empty map to prevent nil panic
 				PodAnnotationsAllowFromStep: c.Bool("backend-k8s-pod-annotations-allow-from-step"),
 				PodNodeSelector:             make(map[string]string), // just init empty map to prevent nil panic
+				PodTolerations:              make([]Toleration, 0),
 				ImagePullSecretNames:        c.StringSlice("backend-k8s-pod-image-pull-secret-names"),
 				SecurityContext: SecurityContextConfig{
 					RunAsNonRoot: c.Bool("backend-k8s-secctx-nonroot"), // cspell:words secctx nonroot
 				},
 				NativeSecretsAllowFromStep: c.Bool("backend-k8s-allow-native-secrets"),
-			}
-			// TODO: remove in next major
-			if len(config.ImagePullSecretNames) == 1 && config.ImagePullSecretNames[0] == "regcred" {
-				log.Warn().Msg("WOODPECKER_BACKEND_K8S_PULL_SECRET_NAMES is set to the default ('regcred'). It will default to empty in Woodpecker 3.0. Set it explicitly before then.")
 			}
 			// Unmarshal label and annotation settings here to ensure they're valid on startup
 			if labels := c.String("backend-k8s-pod-labels"); labels != "" {
@@ -120,6 +119,12 @@ func configFromCliContext(ctx context.Context) (*config, error) {
 			if nodeSelector := c.String("backend-k8s-pod-node-selector"); nodeSelector != "" {
 				if err := yaml.Unmarshal([]byte(nodeSelector), &config.PodNodeSelector); err != nil {
 					log.Error().Err(err).Msgf("could not unmarshal pod node selector '%s'", nodeSelector)
+					return nil, err
+				}
+			}
+			if tolerations := c.String("backend-k8s-pod-tolerations"); tolerations != "" {
+				if err := json.Unmarshal([]byte(tolerations), &config.PodTolerations); err != nil {
+					log.Error().Err(err).Msgf("could not unmarshal pod tolerations '%s'", tolerations)
 					return nil, err
 				}
 			}
@@ -184,6 +189,7 @@ func (e *kube) getConfig() *config {
 	c.PodLabels = maps.Clone(e.config.PodLabels)
 	c.PodAnnotations = maps.Clone(e.config.PodAnnotations)
 	c.PodNodeSelector = maps.Clone(e.config.PodNodeSelector)
+	c.PodTolerations = slices.Clone(e.config.PodTolerations)
 	c.ImagePullSecretNames = slices.Clone(e.config.ImagePullSecretNames)
 	return &c
 }
@@ -254,7 +260,7 @@ func (e *kube) WaitStep(ctx context.Context, step *types.Step, taskUUID string) 
 		}
 
 		if pod.Name == podName {
-			if isImagePullBackOffState(pod) {
+			if isImagePullBackOffState(pod) || isInvalidImageName(pod) {
 				finished <- true
 			}
 
@@ -286,7 +292,7 @@ func (e *kube) WaitStep(ctx context.Context, step *types.Step, taskUUID string) 
 		return nil, err
 	}
 
-	if isImagePullBackOffState(pod) {
+	if isImagePullBackOffState(pod) || isInvalidImageName(pod) {
 		return nil, fmt.Errorf("could not pull image for pod %s", podName)
 	}
 
@@ -330,7 +336,7 @@ func (e *kube) TailStep(ctx context.Context, step *types.Step, taskUUID string) 
 		}
 
 		if pod.Name == podName {
-			if isImagePullBackOffState(pod) {
+			if isImagePullBackOffState(pod) || isInvalidImageName(pod) {
 				up <- true
 			}
 			switch pod.Status.Phase {
@@ -395,7 +401,6 @@ func (e *kube) DestroyStep(ctx context.Context, step *types.Step, taskUUID strin
 func (e *kube) DestroyWorkflow(ctx context.Context, conf *types.Config, taskUUID string) error {
 	log.Trace().Str("taskUUID", taskUUID).Msg("deleting Kubernetes primitives")
 
-	// Use noContext because the ctx sent to this function will be canceled/done in case of error or canceled by user.
 	for _, stage := range conf.Stages {
 		for _, step := range stage.Steps {
 			err := stopPod(ctx, e, step, defaultDeleteOptions)

@@ -67,6 +67,12 @@ var Flags = []cli.Flag{
 		Usage:   "backend k8s Agent-wide worker pod node selector",
 		Value:   "",
 	},
+	&cli.StringFlag{
+		Sources: cli.EnvVars("WOODPECKER_BACKEND_K8S_POD_TOLERATIONS"),
+		Name:    "backend-k8s-pod-tolerations",
+		Usage:   "backend k8s Agent-wide worker pod tolerations",
+		Value:   "",
+	},
 	&cli.BoolFlag{
 		Sources: cli.EnvVars("WOODPECKER_BACKEND_K8S_POD_ANNOTATIONS_ALLOW_FROM_STEP"),
 		Name:    "backend-k8s-pod-annotations-allow-from-step",
@@ -82,7 +88,6 @@ var Flags = []cli.Flag{
 		Sources: cli.EnvVars("WOODPECKER_BACKEND_K8S_PULL_SECRET_NAMES"),
 		Name:    "backend-k8s-pod-image-pull-secret-names",
 		Usage:   "backend k8s pull secret names for private registries",
-		Value:   []string{"regcred"},
 	},
 	&cli.BoolFlag{
 		Sources: cli.EnvVars("WOODPECKER_BACKEND_K8S_ALLOW_NATIVE_SECRETS"),

@@ -84,7 +84,7 @@ func podMeta(step *types.Step, config *config, options BackendOptions, podName s
 	meta := meta_v1.ObjectMeta{
 		Name:        podName,
 		Namespace:   config.Namespace,
-		Annotations: podAnnotations(config, options, podName),
+		Annotations: podAnnotations(config, options),
 	}
 
 	meta.Labels, err = podLabels(step, config, options)
@@ -126,7 +126,7 @@ func stepLabel(step *types.Step) (string, error) {
 	return toDNSName(step.Name)
 }
 
-func podAnnotations(config *config, options BackendOptions, podName string) map[string]string {
+func podAnnotations(config *config, options BackendOptions) map[string]string {
 	annotations := make(map[string]string)
 
 	if len(options.Annotations) > 0 {
@@ -141,13 +141,6 @@ func podAnnotations(config *config, options BackendOptions, podName string) map[
 		log.Trace().Msgf("using annotations from the configuration: %v", config.PodAnnotations)
 		maps.Copy(annotations, config.PodAnnotations)
 	}
-	securityContext := options.SecurityContext
-	if securityContext != nil {
-		key, value := apparmorAnnotation(podName, securityContext.ApparmorProfile)
-		if key != nil && value != nil {
-			annotations[*key] = *value
-		}
-	}
 
 	return annotations
 }
@@ -160,7 +153,7 @@ func podSpec(step *types.Step, config *config, options BackendOptions, nsp nativ
 		ServiceAccountName: options.ServiceAccountName,
 		HostAliases:        hostAliases(step.ExtraHosts),
 		NodeSelector:       nodeSelector(options.NodeSelector, config.PodNodeSelector, step.Environment["CI_SYSTEM_PLATFORM"]),
-		Tolerations:        tolerations(options.Tolerations),
+		Tolerations:        tolerations(options.Tolerations, config.PodTolerations),
 		SecurityContext:    podSecurityContext(options.SecurityContext, config.SecurityContext, step.Privileged),
 	}
 	spec.Volumes, err = pvcVolumes(step.Volumes)
@@ -351,8 +344,16 @@ func nodeSelector(backendNodeSelector, configNodeSelector map[string]string, pla
 	return nodeSelector
 }
 
-func tolerations(backendTolerations []Toleration) []v1.Toleration {
+func tolerations(backendTolerations []Toleration, configTolerations []Toleration) []v1.Toleration {
 	var tolerations []v1.Toleration
+
+	if len(configTolerations) > 0 {
+		log.Trace().Msgf("tolerations that will be used in the configuration: %v", configTolerations)
+		for _, configToleration := range configTolerations {
+			toleration := toleration(configToleration)
+			tolerations = append(tolerations, toleration)
+		}
+	}
 
 	if len(backendTolerations) > 0 {
 		log.Trace().Msgf("tolerations that will be used in the backend options: %v", backendTolerations)
@@ -377,11 +378,12 @@ func toleration(backendToleration Toleration) v1.Toleration {
 
 func podSecurityContext(sc *SecurityContext, secCtxConf SecurityContextConfig, stepPrivileged bool) *v1.PodSecurityContext {
 	var (
-		nonRoot *bool
-		user    *int64
-		group   *int64
-		fsGroup *int64
-		seccomp *v1.SeccompProfile
+		nonRoot  *bool
+		user     *int64
+		group    *int64
+		fsGroup  *int64
+		seccomp  *v1.SeccompProfile
+		apparmor *v1.AppArmorProfile
 	)
 
 	if secCtxConf.RunAsNonRoot {
@@ -410,6 +412,7 @@ func podSecurityContext(sc *SecurityContext, secCtxConf SecurityContextConfig, s
 		}
 
 		seccomp = seccompProfile(sc.SeccompProfile)
+		apparmor = apparmorProfile(sc.ApparmorProfile)
 	}
 
 	if nonRoot == nil && user == nil && group == nil && fsGroup == nil && seccomp == nil {
@@ -417,11 +420,12 @@ func podSecurityContext(sc *SecurityContext, secCtxConf SecurityContextConfig, s
 	}
 
 	securityContext := &v1.PodSecurityContext{
-		RunAsNonRoot:   nonRoot,
-		RunAsUser:      user,
-		RunAsGroup:     group,
-		FSGroup:        fsGroup,
-		SeccompProfile: seccomp,
+		RunAsNonRoot:    nonRoot,
+		RunAsUser:       user,
+		RunAsGroup:      group,
+		FSGroup:         fsGroup,
+		SeccompProfile:  seccomp,
+		AppArmorProfile: apparmor,
 	}
 	log.Trace().Msgf("pod security context that will be used: %v", securityContext)
 	return securityContext
@@ -441,6 +445,22 @@ func seccompProfile(scp *SecProfile) *v1.SeccompProfile {
 	}
 
 	return seccompProfile
+}
+
+func apparmorProfile(scp *SecProfile) *v1.AppArmorProfile {
+	if scp == nil || len(scp.Type) == 0 {
+		return nil
+	}
+	log.Trace().Msgf("using AppArmor profile: %v", scp)
+
+	apparmorProfile := &v1.AppArmorProfile{
+		Type: v1.AppArmorProfileType(scp.Type),
+	}
+	if len(scp.LocalhostProfile) > 0 {
+		apparmorProfile.LocalhostProfile = &scp.LocalhostProfile
+	}
+
+	return apparmorProfile
 }
 
 func containerSecurityContext(sc *SecurityContext, stepPrivileged bool) *v1.SecurityContext {
@@ -469,36 +489,6 @@ func containerSecurityContext(sc *SecurityContext, stepPrivileged bool) *v1.Secu
 	}
 
 	return nil
-}
-
-func apparmorAnnotation(containerName string, scp *SecProfile) (*string, *string) {
-	if scp == nil {
-		return nil, nil
-	}
-	log.Trace().Msgf("using AppArmor profile: %v", scp)
-
-	var (
-		profileType string
-		profilePath string
-	)
-
-	if scp.Type == SecProfileTypeRuntimeDefault {
-		profileType = "runtime"
-		profilePath = "default"
-	}
-
-	if scp.Type == SecProfileTypeLocalhost {
-		profileType = "localhost"
-		profilePath = scp.LocalhostProfile
-	}
-
-	if len(profileType) == 0 {
-		return nil, nil
-	}
-
-	key := v1.DeprecatedAppArmorBetaContainerAnnotationKeyPrefix + containerName
-	value := profileType + "/" + profilePath
-	return &key, &value
 }
 
 func mapToEnvVars(m map[string]string) []v1.EnvVar {

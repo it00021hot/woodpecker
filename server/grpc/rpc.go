@@ -39,6 +39,9 @@ import (
 	"go.woodpecker-ci.org/woodpecker/v2/server/store"
 )
 
+// updateAgentLastWorkDelay the delay before the LastWork info should be updated.
+const updateAgentLastWorkDelay = time.Minute
+
 type RPC struct {
 	queue         queue.Queue
 	pubsub        *pubsub.Publisher
@@ -98,8 +101,7 @@ func (s *RPC) Extend(c context.Context, workflowID string) error {
 		return err
 	}
 
-	agent.LastWork = time.Now().Unix()
-	err = s.store.AgentUpdate(agent)
+	err = s.updateAgentLastWork(agent)
 	if err != nil {
 		return err
 	}
@@ -237,8 +239,7 @@ func (s *RPC) Init(c context.Context, strWorkflowID string, state rpc.WorkflowSt
 	}
 	s.updateForgeStatus(c, repo, currentPipeline, workflow)
 
-	agent.LastWork = time.Now().Unix()
-	return s.store.AgentUpdate(agent)
+	return s.updateAgentLastWork(agent)
 }
 
 // Done marks the workflow with the given ID as done.
@@ -331,43 +332,55 @@ func (s *RPC) Done(c context.Context, strWorkflowID string, state rpc.WorkflowSt
 	if err != nil {
 		return err
 	}
-	agent.LastWork = time.Now().Unix()
-	return s.store.AgentUpdate(agent)
+	return s.updateAgentLastWork(agent)
 }
 
 // Log writes a log entry to the database and publishes it to the pubsub.
-func (s *RPC) Log(c context.Context, rpcLogEntry *rpc.LogEntry) error {
-	// convert rpc log_entry to model.log_entry
-	step, err := s.store.StepByUUID(rpcLogEntry.StepUUID)
+// An explicit stepUUID makes it obvious that all entries must come from the same step.
+func (s *RPC) Log(c context.Context, stepUUID string, rpcLogEntries []*rpc.LogEntry) error {
+	step, err := s.store.StepByUUID(stepUUID)
 	if err != nil {
-		return fmt.Errorf("could not find step with uuid %s in store: %w", rpcLogEntry.StepUUID, err)
+		return fmt.Errorf("could not find step with uuid %s in store: %w", stepUUID, err)
 	}
-	logEntry := &model.LogEntry{
-		StepID: step.ID,
-		Time:   rpcLogEntry.Time,
-		Line:   rpcLogEntry.Line,
-		Data:   rpcLogEntry.Data,
-		Type:   model.LogEntryType(rpcLogEntry.Type),
-	}
-
-	// make sure writes to pubsub are non blocking (https://github.com/woodpecker-ci/woodpecker/blob/c919f32e0b6432a95e1a6d3d0ad662f591adf73f/server/logging/log.go#L9)
-	go func() {
-		// write line to listening web clients
-		if err := s.logger.Write(c, logEntry.StepID, logEntry); err != nil {
-			log.Error().Err(err).Msgf("rpc server could not write to logger")
-		}
-	}()
 
 	agent, err := s.getAgentFromContext(c)
 	if err != nil {
 		return err
 	}
-	agent.LastWork = time.Now().Unix()
-	if err := s.store.AgentUpdate(agent); err != nil {
+
+	err = s.updateAgentLastWork(agent)
+	if err != nil {
 		return err
 	}
 
-	return server.Config.Services.LogStore.LogAppend(logEntry)
+	var logEntries []*model.LogEntry
+
+	for _, rpcLogEntry := range rpcLogEntries {
+		if rpcLogEntry.StepUUID != stepUUID {
+			return fmt.Errorf("expected step UUID %s, got %s", stepUUID, rpcLogEntry.StepUUID)
+		}
+		logEntries = append(logEntries, &model.LogEntry{
+			StepID: step.ID,
+			Time:   rpcLogEntry.Time,
+			Line:   rpcLogEntry.Line,
+			Data:   rpcLogEntry.Data,
+			Type:   model.LogEntryType(rpcLogEntry.Type),
+		})
+	}
+
+	// make sure writes to pubsub are non blocking (https://github.com/woodpecker-ci/woodpecker/blob/c919f32e0b6432a95e1a6d3d0ad662f591adf73f/server/logging/log.go#L9)
+	go func() {
+		// write line to listening web clients
+		if err := s.logger.Write(c, step.ID, logEntries); err != nil {
+			log.Error().Err(err).Msgf("rpc server could not write to logger")
+		}
+	}()
+
+	if err = server.Config.Services.LogStore.LogAppend(step, logEntries); err != nil {
+		log.Error().Err(err).Msg("could not store log entries")
+	}
+
+	return nil
 }
 
 func (s *RPC) RegisterAgent(ctx context.Context, platform, backend, version string, capacity int32) (int64, error) {
@@ -509,4 +522,18 @@ func (s *RPC) getHostnameFromContext(ctx context.Context) (string, error) {
 		}
 	}
 	return "", errors.New("no hostname in metadata")
+}
+
+func (s *RPC) updateAgentLastWork(agent *model.Agent) error {
+	// only update agent.LastWork if not recently updated
+	if time.Unix(agent.LastWork, 0).Add(updateAgentLastWorkDelay).After(time.Now()) {
+		return nil
+	}
+
+	agent.LastWork = time.Now().Unix()
+	if err := s.store.AgentUpdate(agent); err != nil {
+		return err
+	}
+
+	return nil
 }

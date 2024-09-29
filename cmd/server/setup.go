@@ -43,7 +43,6 @@ import (
 	"go.woodpecker-ci.org/woodpecker/v2/server/store"
 	"go.woodpecker-ci.org/woodpecker/v2/server/store/datastore"
 	"go.woodpecker-ci.org/woodpecker/v2/server/store/types"
-	"go.woodpecker-ci.org/woodpecker/v2/shared/constant"
 )
 
 const (
@@ -165,8 +164,9 @@ func setupEvilGlobals(ctx context.Context, c *cli.Command, s store.Store) error 
 	server.Config.Pipeline.AuthenticatePublicRepos = c.Bool("authenticate-public-repos")
 
 	// Cloning
-	server.Config.Pipeline.DefaultCloneImage = c.String("default-clone-image")
-	constant.TrustedCloneImages = append(constant.TrustedCloneImages, server.Config.Pipeline.DefaultCloneImage)
+	server.Config.Pipeline.DefaultClonePlugin = c.String("default-clone-plugin")
+	server.Config.Pipeline.TrustedClonePlugins = c.StringSlice("plugins-trusted-clone")
+	server.Config.Pipeline.TrustedClonePlugins = append(server.Config.Pipeline.TrustedClonePlugins, server.Config.Pipeline.DefaultClonePlugin)
 
 	// Execution
 	_events := c.StringSlice("default-cancel-previous-pipeline-events")
@@ -177,14 +177,6 @@ func setupEvilGlobals(ctx context.Context, c *cli.Command, s store.Store) error 
 	server.Config.Pipeline.DefaultCancelPreviousPipelineEvents = events
 	server.Config.Pipeline.DefaultTimeout = c.Int("default-pipeline-timeout")
 	server.Config.Pipeline.MaxTimeout = c.Int("max-pipeline-timeout")
-
-	// limits
-	server.Config.Pipeline.Limits.MemSwapLimit = c.Int("limit-mem-swap")
-	server.Config.Pipeline.Limits.MemLimit = c.Int("limit-mem")
-	server.Config.Pipeline.Limits.ShmSize = c.Int("limit-shm-size")
-	server.Config.Pipeline.Limits.CPUQuota = c.Int("limit-cpu-quota")
-	server.Config.Pipeline.Limits.CPUShares = c.Int("limit-cpu-shares")
-	server.Config.Pipeline.Limits.CPUSet = c.String("limit-cpu-set")
 
 	// backend options for pipeline compiler
 	server.Config.Pipeline.Proxy.No = c.String("backend-no-proxy")
@@ -206,11 +198,7 @@ func setupEvilGlobals(ctx context.Context, c *cli.Command, s store.Store) error 
 	} else {
 		server.Config.Server.WebhookHost = serverHost
 	}
-	if c.IsSet("server-dev-oauth-host-deprecated") {
-		server.Config.Server.OAuthHost = c.String("server-dev-oauth-host-deprecated")
-	} else {
-		server.Config.Server.OAuthHost = serverHost
-	}
+	server.Config.Server.OAuthHost = serverHost
 	server.Config.Server.Port = c.String("server-addr")
 	server.Config.Server.PortTLS = c.String("server-addr-tls")
 	server.Config.Server.StatusContext = c.String("status-context")
@@ -228,6 +216,7 @@ func setupEvilGlobals(ctx context.Context, c *cli.Command, s store.Store) error 
 	server.Config.Pipeline.Volumes = c.StringSlice("volume")
 	server.Config.WebUI.EnableSwagger = c.Bool("enable-swagger")
 	server.Config.WebUI.SkipVersionCheck = c.Bool("skip-version-check")
+	server.Config.Pipeline.PrivilegedPlugins = c.StringSlice("plugins-privileged")
 
 	// list has default value but should be able to be set to zero
 	server.Config.Pipeline.Privileged = c.StringSlice("escalate")

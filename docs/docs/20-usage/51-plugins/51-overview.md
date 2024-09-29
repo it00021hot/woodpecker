@@ -1,11 +1,12 @@
 # Plugins
 
-Plugins are pipeline steps that perform pre-defined tasks and are configured as steps in your pipeline. Plugins can be used to deploy code, publish artifacts, send notification, and more.
+Plugins are pipeline steps that perform pre-defined tasks and are configured as steps in your pipeline.
+Plugins can be used to deploy code, publish artifacts, send notification, and more.
 
 They are automatically pulled from the default container registry the agent's have configured.
 
 ```dockerfile title="Dockerfile"
-FROM laszlocloud/kubectl
+FROM cloud/kubectl
 COPY deploy /usr/local/deploy
 ENTRYPOINT ["/usr/local/deploy"]
 ```
@@ -17,7 +18,7 @@ kubectl apply -f $PLUGIN_TEMPLATE
 ```yaml title=".woodpecker.yaml"
 steps:
   - name: deploy-to-k8s
-    image: laszlocloud/my-k8s-plugin
+    image: cloud/my-k8s-plugin
     settings:
       template: config/k8s/service.yaml
 ```
@@ -33,7 +34,7 @@ steps:
       - go test
 
   - name: publish
-    image: plugins/docker
+    image: woodpeckerci/plugin-kaniko
     settings:
       repo: foo/bar
       tags: latest

@@ -113,6 +113,10 @@ func Test_expandImage(t *testing.T) {
 			from: "gcr.io/golang:1.0.0",
 			want: "gcr.io/golang:1.0.0",
 		},
+		{
+			from: "codeberg.org/6543/hello:latest@2c98dce11f78c2b4e40f513ca82f75035eb8cfa4957a6d8eb3f917ecaf77803",
+			want: "codeberg.org/6543/hello:latest@2c98dce11f78c2b4e40f513ca82f75035eb8cfa4957a6d8eb3f917ecaf77803",
+		},
 		// error cases, return input unmodified
 		{
 			from: "foo/bar?baz:boo",
