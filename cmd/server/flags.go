@@ -135,10 +135,11 @@ var flags = append([]cli.Flag{
 		Value:   []string{"push", "pull_request"},
 	},
 	&cli.StringFlag{
-		Sources: cli.EnvVars("WOODPECKER_DEFAULT_CLONE_IMAGE"),
-		Name:    "default-clone-image",
+		Sources: cli.EnvVars("WOODPECKER_DEFAULT_CLONE_PLUGIN", "WOODPECKER_DEFAULT_CLONE_IMAGE"),
+		Name:    "default-clone-plugin",
+		Aliases: []string{"default-clone-image"},
 		Usage:   "The default docker image to be used when cloning the repo",
-		Value:   constant.DefaultCloneImage,
+		Value:   constant.DefaultClonePlugin,
 	},
 	&cli.IntFlag{
 		Sources: cli.EnvVars("WOODPECKER_DEFAULT_PIPELINE_TIMEOUT"),
@@ -159,10 +160,15 @@ var flags = append([]cli.Flag{
 		Value:   time.Hour * 72,
 	},
 	&cli.StringSliceFlag{
-		Sources: cli.EnvVars("WOODPECKER_ESCALATE"),
-		Name:    "escalate",
-		Usage:   "images to run in privileged mode",
-		Value:   constant.PrivilegedPlugins,
+		Sources: cli.EnvVars("WOODPECKER_PLUGINS_PRIVILEGED"),
+		Name:    "plugins-privileged",
+		Usage:   "Allow plugins to run in privileged mode, if environment variable is defined but empty there will be none",
+	},
+	&cli.StringSliceFlag{
+		Sources: cli.EnvVars("WOODPECKER_PLUGINS_TRUSTED_CLONE"),
+		Name:    "plugins-trusted-clone",
+		Usage:   "Plugins witch are trusted to handle the netrc info in clone steps",
+		Value:   constant.TrustedClonePlugins,
 	},
 	&cli.StringSliceFlag{
 		Sources: cli.EnvVars("WOODPECKER_VOLUME"),
@@ -289,36 +295,8 @@ var flags = append([]cli.Flag{
 		Usage:   "How many retries of fetching the Woodpecker configuration from a forge are done before we fail",
 		Value:   3,
 	},
-	&cli.IntFlag{
-		Sources: cli.EnvVars("WOODPECKER_LIMIT_MEM_SWAP"),
-		Name:    "limit-mem-swap",
-		Usage:   "maximum memory used for swap in bytes",
-	},
-	&cli.IntFlag{
-		Sources: cli.EnvVars("WOODPECKER_LIMIT_MEM"),
-		Name:    "limit-mem",
-		Usage:   "maximum memory allowed in bytes",
-	},
-	&cli.IntFlag{
-		Sources: cli.EnvVars("WOODPECKER_LIMIT_SHM_SIZE"),
-		Name:    "limit-shm-size",
-		Usage:   "docker compose /dev/shm allowed in bytes",
-	},
-	&cli.IntFlag{
-		Sources: cli.EnvVars("WOODPECKER_LIMIT_CPU_QUOTA"),
-		Name:    "limit-cpu-quota",
-		Usage:   "impose a cpu quota",
-	},
-	&cli.IntFlag{
-		Sources: cli.EnvVars("WOODPECKER_LIMIT_CPU_SHARES"),
-		Name:    "limit-cpu-shares",
-		Usage:   "change the cpu shares",
-	},
-	&cli.StringFlag{
-		Sources: cli.EnvVars("WOODPECKER_LIMIT_CPU_SET"),
-		Name:    "limit-cpu-set",
-		Usage:   "set the cpus allowed to execute containers",
-	},
+	//
+	// generic forge settings
 	//
 	&cli.StringFlag{
 		Name:    "forge-url",
@@ -477,7 +455,7 @@ var flags = append([]cli.Flag{
 	// expert flags
 	//
 	&cli.StringFlag{
-		Sources: cli.EnvVars("WOODPECKER_EXPERT_WEBHOOK_HOST", "WOODPECKER_WEBHOOK_HOST"), // TODO: remove WOODPECKER_WEBHOOK_HOST in next major release
+		Sources: cli.EnvVars("WOODPECKER_EXPERT_WEBHOOK_HOST"),
 		Name:    "server-webhook-host",
 		Usage:   "!!!for experts!!! fully qualified woodpecker server url called by forge's webhooks. Format: <scheme>://<host>[/<prefix path>]",
 	},
